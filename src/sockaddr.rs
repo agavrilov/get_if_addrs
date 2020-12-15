@@ -12,7 +12,10 @@ use libc::{sockaddr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ptr::NonNull;
 #[cfg(windows)]
-use winapi::{sockaddr_in6, AF_INET, AF_INET6, SOCKADDR as sockaddr, SOCKADDR_IN as sockaddr_in};
+use winapi::shared::{
+    ws2def::{AF_INET, AF_INET6, SOCKADDR as sockaddr, SOCKADDR_IN as sockaddr_in},
+    ws2ipdef::SOCKADDR_IN6 as sockaddr_in6,
+};
 
 pub fn to_ipaddr(sockaddr: *const sockaddr) -> Option<IpAddr> {
     if sockaddr.is_null() {
@@ -53,28 +56,32 @@ impl SockAddr {
     }
 
     #[cfg(windows)]
+    #[allow(unsafe_code)]
     fn as_ipaddr(&self) -> Option<IpAddr> {
-        match self.sockaddr_in() {
-            Some(SockAddrIn::In(sa)) => {
-                // Ignore all 169.254.x.x addresses as these are not active interfaces
-                if sa.sin_addr.S_un & 65535 == 0xfea9 {
-                    return None;
+        unsafe {
+            match self.sockaddr_in() {
+                Some(SockAddrIn::In(sa)) => {
+                    // Ignore all 169.254.x.x addresses as these are not active interfaces
+                    if sa.sin_addr.S_un.S_addr() & 65535 == 0xfea9 {
+                        return None;
+                    }
+                    Some(IpAddr::V4(Ipv4Addr::new(
+                        ((sa.sin_addr.S_un.S_addr() >> 0) & 255) as u8,
+                        ((sa.sin_addr.S_un.S_addr() >> 8) & 255) as u8,
+                        ((sa.sin_addr.S_un.S_addr() >> 16) & 255) as u8,
+                        ((sa.sin_addr.S_un.S_addr() >> 24) & 255) as u8,
+                    )))
                 }
-                Some(IpAddr::V4(Ipv4Addr::new(
-                    ((sa.sin_addr.S_un >> 0) & 255) as u8,
-                    ((sa.sin_addr.S_un >> 8) & 255) as u8,
-                    ((sa.sin_addr.S_un >> 16) & 255) as u8,
-                    ((sa.sin_addr.S_un >> 24) & 255) as u8,
-                )))
-            }
-            Some(SockAddrIn::In6(sa)) => {
-                // Ignore all fe80:: addresses as these are link locals
-                if sa.sin6_addr.s6_addr[0] == 0xfe && sa.sin6_addr.s6_addr[1] == 0x80 {
-                    return None;
+                Some(SockAddrIn::In6(sa)) => {
+                    // Ignore all fe80:: addresses as these are link locals
+                    let addr_bytes = sa.sin6_addr.u.Byte();
+                    if addr_bytes[0] == 0xfe && addr_bytes[1] == 0x80 {
+                        return None;
+                    }
+                    Some(IpAddr::V6(Ipv6Addr::from(*addr_bytes)))
                 }
-                Some(IpAddr::V6(Ipv6Addr::from(sa.sin6_addr.s6_addr)))
+                None => None,
             }
-            None => None,
         }
     }
 

@@ -11,15 +11,14 @@ version = "0.5.3"
 edition = "2018"
 
 [dependencies]
-clippy = {version = "~0.0.175", optional = true}
-libc = "~0.2.34"
+libc = ">=0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winapi = "0.2"
+winapi = {version = ">=0.3.9", features = ["minwindef", "winerror", "ws2def", "ws2ipdef"]}
 
 [target.'cfg(target_os = "android")'.dependencies.get_if_addrs-sys]
-version = "~0.1.1"
+version = ">=0"
 path = "get_if_addrs-sys"
 
 [dev-dependencies]
-unwrap = "~1.2.0"
+unwrap = ">=1"
